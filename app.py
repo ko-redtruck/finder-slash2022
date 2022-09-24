@@ -1,38 +1,24 @@
 #!/usr/bin/env python
 
 import asyncio
-import json
 import websockets
 from tmdbv3api import TMDb
 from tmdbv3api import Movie
+
+from websocket_event import *
 
 tmdb = TMDb()
 tmdb.language = 'en'
 tmdb.debug = True
 
-class EVENTS:
-    MOVIES = 'movies'
-    UPVOTE = 'upvote'
-    DOWNVOTE = 'downvote'
+
 
 PORT = 8001
 
 USERS = set()
 SESSIONS = {1:{}}
 
-async def send_event_message(websocket, event, data):
-    websocket.send(json.dumps({
-        'event': event,
-        'data': data
-    })) 
 
-async def receive_event_message(websocket):
-    try:
-        message = await websocket.recv()
-        return json.loads(message)
-    except websockets.ConnectionClosed:
-        print(f"Terminated connection with client: {websocket}")
-        raise websockets.ConnectionClosed
 
 def generate_movie_genres():
     MOVIE_GENRES_JSON = """
@@ -75,6 +61,7 @@ async def validate_session_id(websocket, path):
         print(f'Session id: {session_id} not found')
         await websocket.close()
         raise Exception(f'Session id: {session_id} not found')
+    return SESSIONS[session_id]
 
 def register_user(websocket, path):
     # Register user
@@ -86,17 +73,35 @@ def get_most_popular_movies():
     movies = movie.popular()
     return movies_to_movie_data(movies)
 
+def handle_vote_event(message, session, vote_value):
+    genre_ids = message["data"]["genre_ids"]
+    print(genre_ids)
+    for id in genre_ids:
+        try:
+            session[id] += vote_value
+        except:
+            session[id] = vote_value
+
+def handle_upvote_event(message, session):
+    handle_vote_event(message, session, 1)
+    
+def handle_downvote_event(message, session):
+    handle_vote_event(message, session, -1)
+
 async def handler(websocket, path):
     try:
         register_user(websocket, path)
-        await validate_session_id(websocket, path)
-
+        session = await validate_session_id(websocket, path)
         await send_event_message(websocket, EVENTS.MOVIES, get_most_popular_movies())
         while True:
-           
-
-            
-    except:
+            message = await receive_event_message(websocket)
+            if message['event'] == EVENTS.UPVOTE:
+                handle_upvote_event(message, session)
+            elif message['event'] == EVENTS.DOWNVOTE:
+                handle_downvote_event(message, session)
+            print("Session:",session)
+    except Exception as e:
+        print(e)
         await websocket.close()
     finally:
         # Unregister user
