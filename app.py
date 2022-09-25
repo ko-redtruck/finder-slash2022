@@ -10,6 +10,8 @@ from functools import reduce
 from websocket_event import *
 import pickle
 import random
+import signal
+import os
 
 
 tmdb = TMDb()
@@ -19,6 +21,8 @@ tmdb.debug = True
 
 
 PORT = 8001
+if 'PORT' in os.environ:
+    PORT = int(int(os.environ["PORT"]))
 
 SESSIONS = {}
 
@@ -207,9 +211,17 @@ async def handler(websocket, path):
             print(f'Cleaned session: {session_id}')
 
 async def main():
-    async with websockets.serve(handler, host='0.0.0.0', port=PORT):
-        print(f"Running websocket on port {PORT}")
-        await asyncio.Future()  # run forever
+     # Set the stop condition when receiving SIGTERM.
+    loop = asyncio.get_running_loop()
+    stop = loop.create_future()
+    loop.add_signal_handler(signal.SIGTERM, stop.set_result, None)
 
+    print(f"Running websocket on port {PORT}")
+    async with websockets.serve(
+        handler,
+        host="0.0.0.0",
+        port=PORT):
+        await stop
+        
 if __name__ == "__main__":
     asyncio.run(main())
