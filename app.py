@@ -1,6 +1,7 @@
 #!/usr/bin/env python
 
 import asyncio
+from re import S
 import websockets
 from tmdbv3api import TMDb
 from tmdbv3api import Movie
@@ -67,8 +68,7 @@ def search_for_movie(movie_name : str):
     search_results = movie.search(movie_name)
     return list(filter(None,[movie_to_movie_data(movie_data) for movie_data in search_results]))
 
-async def validate_session_id(websocket, path):
-    session_id = int(path.replace('/',''))
+async def validate_session_id(websocket, session_id):
     """
     if session_id not in SESSIONS:
         print(f'Session id: {session_id} not found')
@@ -80,8 +80,9 @@ async def validate_session_id(websocket, path):
             'start_time': time.time(),
             'users': set()
         }
+        print('CREATING TASK DELTE')
         asyncio.create_task(end_session_on_timeout(session_id, SESSIONS[session_id], SESSION_TIMEOUT))
-    return session_id, SESSIONS[session_id]
+    return SESSIONS[session_id]
 
 def register_user(websocket, path, session):
     # Register user
@@ -127,13 +128,16 @@ async def end_session_on_timeout(session_id, session, timeout):
 def find_winning_movie(session):
     movie = Movie()
     movies_data = MOVIE_LIST
-    for movie in movies_data:
-        movie['score'] = genre_match_score(movie, session['votes'], session['total_votes'])
+    if 'votes' not in session:
+        return MOVIE_LIST[69]
+    else:
+        for movie in movies_data:
+            movie['score'] = genre_match_score(movie, session['votes'], session['total_votes'])
 
-    best_score = max(movie['score'] for movie in movies_data)
-    best_movies = list(filter(lambda m: m['score'] == best_score, movies_data))
-    best_movie = reduce(lambda m1, m2: m1 if m1['rating'] > m2['rating'] else m2, best_movies)
-    return best_movie
+        best_score = max(movie['score'] for movie in movies_data)
+        best_movies = list(filter(lambda m: m['score'] == best_score, movies_data))
+        best_movie = reduce(lambda m1, m2: m1 if m1['rating'] > m2['rating'] else m2, best_movies)
+        return best_movie
 
 async def end_finder_session(session_id, session):
     print('ENDING SESSIOn')
@@ -142,17 +146,27 @@ async def end_finder_session(session_id, session):
     print(f"winner: {winning_movie['title']}")
     websockets.broadcast(session['users'], event_message_to_json(EVENTS.RESULT, winning_movie))
     print('closing connections')
-    for websocket in session['users']:
+    users_copy =  [websocket for websocket in session['users']]
+    for websocket in users_copy:
         await websocket.close()
-    print(f'Closing session: {session_id}')
     print(SESSIONS)
-    SESSIONS.pop(session_id)
 
+def deactive_session(session_id):
+    if session_id in SESSIONS:
+        SESSIONS.pop(session_id)
 async def handler(websocket, path):
-    session = None
+    session_id = 0
     try:
-        session_id, session = await validate_session_id(websocket, path)
-        register_user(websocket, path, session)
+        session_id = int(path.replace('/','')[:20])
+    except Exception as e:
+        print(f'Connection failed with {websocket} at path: {path} error: {e}')
+        return
+
+    session = await validate_session_id(websocket, session_id)
+    register_user(websocket, path, session)
+
+    try:
+        
         await send_event_message(websocket, EVENTS.MOVIES, get_most_popular_movies())
         
         while True:
@@ -176,19 +190,13 @@ async def handler(websocket, path):
             session['users'].remove(websocket)
         print(f"Currently there are {sum(len(session['users']) for session in SESSIONS.values())} connected")
 
-"""
-async def consumer_handler(websocket, path):
-    pass
+    session_keys_copy = [key for key in SESSIONS.keys()]
+    for session_id in session_keys_copy:
+        session = SESSIONS[session_id]
+        if len(session['users']) == 0:
+            deactive_session(session_id)
+            print(f'Cleaned session: {session_id}')
 
-async def producer_handler(websocket, path):
-    pass
-
-async def handler(websocket, path):
-    await asyncio.gather(
-        consumer_handler(websocket, path),
-        producer_handler(websocket),
-    )
-"""
 async def main():
     async with websockets.serve(handler, host='0.0.0.0', port=PORT):
         print(f"Running websocket on port {PORT}")
