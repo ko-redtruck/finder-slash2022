@@ -75,7 +75,6 @@ async def validate_session_id(websocket, session_id):
             'start_time': time.time(),
             'users': dict()
         }
-        print('CREATING TASK DELTE')
         asyncio.create_task(end_session_on_timeout(session_id, SESSIONS[session_id], SESSION_TIMEOUT))
     return SESSIONS[session_id]
 
@@ -84,7 +83,6 @@ def register_user(websocket, path, session):
     session['users'][websocket] = {
         'page': 1
     }
-    print(f"Connection received from {websocket} at path: {path}")
 
 def get_most_popular_movies(page=1):
     movie = Movie()
@@ -95,7 +93,6 @@ def get_most_popular_movies(page=1):
 
 def handle_vote_event(message, store, vote_value):
     genre_ids = message["data"]["genre_ids"]
-    print(genre_ids)
     for id in genre_ids:
         try:
             store[id] += vote_value
@@ -139,16 +136,11 @@ def find_winning_movie(session):
         return best_movie
 
 async def end_finder_session(session_id, session):
-    print('ENDING SESSIOn')
     winning_movie = find_winning_movie(session)
-    print(winning_movie)
-    print(f"winner: {winning_movie['title']}")
     websockets.broadcast(session['users'].keys(), event_message_to_json(EVENTS.RESULT, winning_movie))
-    print('closing connections')
     users_copy =  [websocket for websocket in session['users'].keys()]
     for websocket in users_copy:
         await websocket.close()
-    print(SESSIONS)
 
 def deactive_session(session_id):
     if session_id in SESSIONS:
@@ -158,7 +150,7 @@ async def handler(websocket, path):
     try:
         session_id = int(path.replace('/','')[:20])
     except Exception as e:
-        print(f'Connection failed with {websocket} at path: {path} error: {e}')
+        #print(f'Connection failed with {websocket} at path: {path} error: {e}')
         return
 
     session = await validate_session_id(websocket, session_id)
@@ -180,9 +172,11 @@ async def handler(websocket, path):
                 session['total_votes'] = 0
             if message['event'] == EVENTS.UPVOTE:
                 handle_upvote_event(message, session['votes'])
+                print(f'{len(session["users"])} users | like {message["data"]["title"]}')    
                 session['total_votes'] += 1
             elif message['event'] == EVENTS.DOWNVOTE:
                 handle_downvote_event(message, session['votes'])
+                print(f'{len(session["users"])} users | dislike {message["data"]["title"]}')    
                 session['total_votes'] += 1
             elif message['event'] == EVENTS.MOVIES:
                 session['users'][websocket]['page'] += 1
@@ -191,17 +185,17 @@ async def handler(websocket, path):
                 'movies':get_most_popular_movies(page=session['users'][websocket]['page']),
                 'session_time_remaining': SESSION_TIMEOUT - (time.time() - session['start_time']),
                 'users': len(session['users'])
-                })          
-            print("Session:",session)
+                })
+                 
 
     except Exception as e:
-        print(e)
+        #print(e)
         await websocket.close()
     finally:
         # Unregister user
         if session is not None:
             session['users'].pop(websocket)
-        print(f"Currently there are {sum(len(session['users']) for session in SESSIONS.values())} connected")
+        print(f"Currently there are {sum(len(session['users']) for session in SESSIONS.values())} users connected")
 
     session_keys_copy = [key for key in SESSIONS.keys()]
     for session_id in session_keys_copy:
