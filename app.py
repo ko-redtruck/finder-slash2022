@@ -187,6 +187,8 @@ async def handler(websocket, path):
                 'users': len(session['users'])
                 })
                  
+            if session['total_votes'] % 50 == 0:
+                print(f'{session["total_votes"]} total votes | winner: {find_winning_movie(session)["title"]}')
 
     except Exception as e:
         #print(e)

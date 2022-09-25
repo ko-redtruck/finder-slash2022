@@ -8,7 +8,7 @@ class EVENTS:
 
 
 async def send_event_message(websocket, event, data):
-    print(f'Sending event: {event}')
+    #print(f'Sending event: {event}')
     await websocket.send(event_message_to_json(event, data)) 
 
 def event_message_to_json(event, data):
@@ -19,7 +19,7 @@ def event_message_to_json(event, data):
 
 async def receive_event_message(websocket):
     message = await websocket.recv()
-    print(f"Receiving: {message}")
+    #print(f"Receiving: {message}")
     return json.loads(message)
    
 async def wait_for_event_message(websocket, event):
