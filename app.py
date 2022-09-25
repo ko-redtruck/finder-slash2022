@@ -26,7 +26,7 @@ if 'PORT' in os.environ:
 
 SESSIONS = {}
 
-SESSION_TIMEOUT = 40
+SESSION_TIMEOUT = 70
 
 
 def movie_to_movie_data(movie_data):
@@ -222,6 +222,6 @@ async def main():
         host="0.0.0.0",
         port=PORT):
         await stop
-        
+
 if __name__ == "__main__":
     asyncio.run(main())
