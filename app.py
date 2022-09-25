@@ -182,7 +182,12 @@ async def handler(websocket, path):
                 session['total_votes'] += 1
             elif message['event'] == EVENTS.MOVIES:
                 session['users'][websocket]['page'] += 1
-                await send_event_message(websocket, EVENTS.MOVIES, get_most_popular_movies(page=session['users'][websocket]['page']))          
+                await send_event_message(websocket, EVENTS.MOVIES, 
+                {
+                'movies':get_most_popular_movies(page=session['users'][websocket]['page']),
+                'session_time_remaining': SESSION_TIMEOUT - (time.time() - session['start_time'])
+            
+                })          
             print("Session:",session)
 
     except Exception as e:
