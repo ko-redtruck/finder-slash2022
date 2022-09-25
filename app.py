@@ -169,8 +169,8 @@ async def handler(websocket, path):
         await send_event_message(websocket, EVENTS.MOVIES, 
             {
                 'movies':get_most_popular_movies(),
-                'session_time_remaining': SESSION_TIMEOUT - (time.time() - session['start_time'])
-            
+                'session_time_remaining': SESSION_TIMEOUT - (time.time() - session['start_time']),
+                'users': len(session['users'])
             })
         
         while True:
@@ -189,8 +189,8 @@ async def handler(websocket, path):
                 await send_event_message(websocket, EVENTS.MOVIES, 
                 {
                 'movies':get_most_popular_movies(page=session['users'][websocket]['page']),
-                'session_time_remaining': SESSION_TIMEOUT - (time.time() - session['start_time'])
-            
+                'session_time_remaining': SESSION_TIMEOUT - (time.time() - session['start_time']),
+                'users': len(session['users'])
                 })          
             print("Session:",session)
 
