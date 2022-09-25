@@ -19,7 +19,7 @@ PORT = 8001
 
 SESSIONS = {}
 
-SESSION_TIMEOUT = 10
+SESSION_TIMEOUT = 20
 
 
 def movie_to_movie_data(movie_data):
@@ -80,6 +80,7 @@ async def validate_session_id(websocket, path):
             'start_time': time.time(),
             'users': set()
         }
+        asyncio.create_task(end_session_on_timeout(session_id, SESSIONS[session_id], SESSION_TIMEOUT))
     return session_id, SESSIONS[session_id]
 
 def register_user(websocket, path, session):
@@ -137,12 +138,14 @@ def find_winning_movie(session):
 async def end_finder_session(session_id, session):
     print('ENDING SESSIOn')
     winning_movie = find_winning_movie(session)
+    print(winning_movie)
     print(f"winner: {winning_movie['title']}")
     websockets.broadcast(session['users'], event_message_to_json(EVENTS.RESULT, winning_movie))
     print('closing connections')
     for websocket in session['users']:
         await websocket.close()
     print(f'Closing session: {session_id}')
+    print(SESSIONS)
     SESSIONS.pop(session_id)
 
 async def handler(websocket, path):
@@ -151,7 +154,6 @@ async def handler(websocket, path):
         session_id, session = await validate_session_id(websocket, path)
         register_user(websocket, path, session)
         await send_event_message(websocket, EVENTS.MOVIES, get_most_popular_movies())
-        asyncio.create_task(end_session_on_timeout(session_id, session, SESSION_TIMEOUT))
         
         while True:
             message = await receive_event_message(websocket)
