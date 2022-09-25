@@ -9,6 +9,8 @@ import time
 from functools import reduce
 from websocket_event import *
 import pickle
+import random
+
 
 tmdb = TMDb()
 tmdb.language = 'en'
@@ -20,7 +22,7 @@ PORT = 8001
 
 SESSIONS = {}
 
-SESSION_TIMEOUT = 20
+SESSION_TIMEOUT = 40
 
 
 def movie_to_movie_data(movie_data):
@@ -63,22 +65,11 @@ print(f'{len(MOVIE_GENRES)} genres and {len(MOVIE_LIST)} movies')
 
 
 
-def search_for_movie(movie_name : str):
-    movie = Movie()
-    search_results = movie.search(movie_name)
-    return list(filter(None,[movie_to_movie_data(movie_data) for movie_data in search_results]))
-
 async def validate_session_id(websocket, session_id):
-    """
-    if session_id not in SESSIONS:
-        print(f'Session id: {session_id} not found')
-        await websocket.close()
-        raise Exception(f'Session id: {session_id} not found')
-    """
     if session_id not in SESSIONS:
         SESSIONS[session_id] = {
             'start_time': time.time(),
-            'users': set()
+            'users': dict()
         }
         print('CREATING TASK DELTE')
         asyncio.create_task(end_session_on_timeout(session_id, SESSIONS[session_id], SESSION_TIMEOUT))
@@ -86,13 +77,17 @@ async def validate_session_id(websocket, session_id):
 
 def register_user(websocket, path, session):
     # Register user
-    session['users'].add(websocket)
+    session['users'][websocket] = {
+        'page': 1
+    }
     print(f"Connection received from {websocket} at path: {path}")
 
-def get_most_popular_movies():
+def get_most_popular_movies(page=1):
     movie = Movie()
-    movies = movie.popular()
-    return movies_to_movie_data(movies)
+    movies = movie.popular(page=page)
+    movies_data = movies_to_movie_data(movies)
+    random.shuffle(movies_data)
+    return movies_data
 
 def handle_vote_event(message, store, vote_value):
     genre_ids = message["data"]["genre_ids"]
@@ -144,9 +139,9 @@ async def end_finder_session(session_id, session):
     winning_movie = find_winning_movie(session)
     print(winning_movie)
     print(f"winner: {winning_movie['title']}")
-    websockets.broadcast(session['users'], event_message_to_json(EVENTS.RESULT, winning_movie))
+    websockets.broadcast(session['users'].keys(), event_message_to_json(EVENTS.RESULT, winning_movie))
     print('closing connections')
-    users_copy =  [websocket for websocket in session['users']]
+    users_copy =  [websocket for websocket in session['users'].keys()]
     for websocket in users_copy:
         await websocket.close()
     print(SESSIONS)
@@ -167,7 +162,12 @@ async def handler(websocket, path):
 
     try:
         
-        await send_event_message(websocket, EVENTS.MOVIES, get_most_popular_movies())
+        await send_event_message(websocket, EVENTS.MOVIES, 
+            {
+                'movies':get_most_popular_movies(),
+                'session_time_remaining': SESSION_TIMEOUT - (time.time() - session['start_time'])
+            
+            })
         
         while True:
             message = await receive_event_message(websocket)
@@ -176,9 +176,13 @@ async def handler(websocket, path):
                 session['total_votes'] = 0
             if message['event'] == EVENTS.UPVOTE:
                 handle_upvote_event(message, session['votes'])
+                session['total_votes'] += 1
             elif message['event'] == EVENTS.DOWNVOTE:
                 handle_downvote_event(message, session['votes'])
-            session['total_votes'] += 1
+                session['total_votes'] += 1
+            elif message['event'] == EVENTS.MOVIES:
+                session['users'][websocket]['page'] += 1
+                await send_event_message(websocket, EVENTS.MOVIES, get_most_popular_movies(page=session['users'][websocket]['page']))          
             print("Session:",session)
 
     except Exception as e:
@@ -187,7 +191,7 @@ async def handler(websocket, path):
     finally:
         # Unregister user
         if session is not None:
-            session['users'].remove(websocket)
+            session['users'].pop(websocket)
         print(f"Currently there are {sum(len(session['users']) for session in SESSIONS.values())} connected")
 
     session_keys_copy = [key for key in SESSIONS.keys()]
