@@ -12,6 +12,7 @@ import pickle
 import random
 import signal
 import os
+import math
 
 
 tmdb = TMDb()
@@ -101,12 +102,19 @@ def handle_vote_event(message, store, vote_value):
 
 def genre_match_score(movie, votes, total_votes) -> int:
     score = 0
+    is_there_a_genre_match = False
     genres = movie['genre_ids']
     if len(genres) == 0:
-        return 0
+        return - math.inf
+    
     for genre in genres:
         if genre in votes:
+            is_there_a_genre_match = True
             score += votes[genre] / total_votes
+    
+    if not is_there_a_genre_match:
+        return - math.inf
+
     score *=  1 / len(genres)
     int_score = round(score * 100)
     return int_score
@@ -115,7 +123,7 @@ def handle_upvote_event(message, store):
     handle_vote_event(message, store, 1)
     
 def handle_downvote_event(message, store):
-    handle_vote_event(message, store, -1)
+    handle_vote_event(message, store, -0.25)
 
 async def end_session_on_timeout(session_id, session, timeout):
     await asyncio.sleep(timeout)
